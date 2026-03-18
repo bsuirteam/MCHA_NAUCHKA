@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import random as rnd
+from multiprocessing import Pool, cpu_count
+
 
 
 # a - Сжатие по x
@@ -43,15 +45,13 @@ def collage_theorem(IFS : tuple,
                     Y_data : tuple):
     points_x=[]
     points_y=[]
-
-    interval_lengths = [IFS[i][0] for i in range(len(IFS))]
-    total_length = sum(interval_lengths)
-    probabilities = [length / total_length for length in interval_lengths]
     
     for i in range(len(X_data)):
         j = 0
 
-        if i > 0:
+        if i == 0:
+            j = i
+        else:
             j = i - 1
 
         x, y = affine_transformation(X_data[i], Y_data[i], *IFS[j])
@@ -66,7 +66,7 @@ def function(x: float) -> float:
     return 0.5 * (1 - 2*abs(x-0.5))
 
 # Интерполируемое множество точек
-X_data = np.sort(np.concatenate(([0.0], np.random.rand(2), [1.0])))
+X_data = np.sort(np.concatenate(([0.0], np.random.rand(10), [1.0])))
 Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
 
 # Среднеквадратическое отклонение
@@ -176,6 +176,20 @@ def mutant(IFS : tuple, mutation_range : tuple) -> tuple:
         mutated.append(new_params)
     return tuple(mutated)
 
+def evaluate_ifs(args):
+    IFS, x_start, y_start, fractal_depth_evolution, X_data, Y_data = args
+    
+    px, py = generate_fractal_IFS(
+        IFS,
+        x_start,
+        y_start,
+        fractal_depth_evolution
+    )
+
+    e = error_for_data(px, py, X_data, Y_data)
+    
+    return (e, IFS)
+
 # Генетический метод
 def evolution(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
     global x_start, y_start, a1, a2, b1, b2, c_range, d_range, e_range, fractal_depth_evolution, function, X_data, Y_data
@@ -188,18 +202,13 @@ def evolution(population_size : int, generations : int, survived_population : in
     for _ in range(generations):
         scores = []
 
-        for IFS in population:
-            px, py = generate_fractal_IFS(IFS, 
-                                        x_start,
-                                        y_start,
-                                        fractal_depth_evolution)
+        args_list = [
+            (IFS, x_start, y_start, fractal_depth_evolution, X_data, Y_data)
+            for IFS in population
+        ]
 
-            # px, py = collage_theorem(IFS, X_data, Y_data)
-
-            # e = error(px, py, function)
-            e = error_for_data(px, py, X_data, Y_data)
-            # e = error_collage(px, py, X_data, Y_data)
-            scores.append((e, IFS))
+        with Pool(cpu_count()) as pool:
+            scores = pool.map(evaluate_ifs, args_list)
 
         scores.sort()
 
@@ -289,46 +298,48 @@ b1 = 0
 b2 = 0.5
 
 # Границы для генерации коэффициентов
-c_range = (-2, 2)
-d_range = (-0.15, 0.15)
-e_range = (-1, 1)
+c_range = (0.3, 0.7)
+d_range = (0.15, 0.15)
+e_range = (-0.5, 0.5)
 
 
 # Глубина фрактала
-fractal_depth_evolution = 1000  # больше точек для оценки
+fractal_depth_evolution = 2000  # больше точек для оценки
 fractal_depth_graph = 15000      # для красивого графика
 
 # Параметры генетического метода
 population_size = 100
-generations = 1000             # ДЛЯ КОЛЛАЖА МОЖЕШЬ СМЕЛО БРАТЬ 5000 И БОЛЬШЕ А БЕЗ ОКОЛО 50   
+generations = 150            # ДЛЯ КОЛЛАЖА МОЖЕШЬ СМЕЛО БРАТЬ 5000 И БОЛЬШЕ А БЕЗ ОКОЛО 50   
 survived_population = 20
 mutation_range = (
     (0,0),      
     (0,0),      
     (-0.1, 0.1), 
-    (-0.01, 0.01), 
+    (0, 0), 
     (-0.05, 0.05), 
 )
-# Результат интерполяции (коэффициенты)
-best_IFS = evolution_collage(population_size, generations, survived_population, mutation_range)
-print(best_IFS)
 
-# Результат интерполяции (ошибка)
-points_x, points_y = generate_fractal_IFS(best_IFS,
-                                        x_start,
-                                        y_start,
-                                        fractal_depth_graph)
-print(error_for_data(points_x, points_y, X_data, Y_data))
+if __name__ == "__main__":
+    # Результат интерполяции (коэффициенты)
+    best_IFS = evolution(population_size, generations, survived_population, mutation_range)
+    print(best_IFS)
 
-# Графическое отображение фрактала
-plt.figure(figsize=(6,6))
-plt.scatter(points_x, points_y, s=1, linewidths=0.1, c="red")
+    # Результат интерполяции (ошибка)
+    points_x, points_y = generate_fractal_IFS(best_IFS,
+                                            x_start,
+                                            y_start,
+                                            fractal_depth_graph)
+    print(error_for_data(points_x, points_y, X_data, Y_data))
 
-# Графическое отображение исходной функции
-# x = np.linspace(0, 1, 500)
-# y = function(x)
-# plt.plot(x, y, c="blue")
-plt.plot(X_data, Y_data, c="blue")
+    # Графическое отображение фрактала
+    plt.figure(figsize=(6,6))
+    plt.scatter(points_x, points_y, s=1, linewidths=0.1, c="red")
 
-plt.gca().set_aspect('equal')
-plt.show()
+    # Графическое отображение исходной функции
+    # x = np.linspace(0, 1, 500)
+    # y = function(x)
+    # plt.plot(x, y, c="blue")
+    plt.plot(X_data, Y_data, c="blue")
+
+    plt.gca().set_aspect('equal')
+    plt.show()
