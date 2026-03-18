@@ -26,7 +26,7 @@ def generate_fractal_IFS(params1 : tuple,
     points_x=[]
     points_y=[]
 
-    for i in range(iterations):
+    for _ in range(iterations):
 
         if rnd.random() < 0.5:
             x,y = affine_transformation(x,y,*params1)
@@ -43,6 +43,10 @@ def function(x: float) -> float:
     return 0.5 * (1 - 2*abs(x-0.5))
     # return np.sin(2 * np.pi * x)
 
+# Интерполируемое множество точек
+X_data = np.sort(np.random.rand(50))
+Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
+
 # Среднеквадратическое отклонение
 def error(points_x : tuple,
         points_y : tuple, 
@@ -53,6 +57,23 @@ def error(points_x : tuple,
         err += (y - f(x))**2
 
     return err / len(points_x)
+
+def error_for_data(points_x : tuple,
+        points_y : tuple, 
+        X_data : tuple,
+        Y_data : tuple) -> float:
+    err = 0
+
+    for x,y in zip(points_x,points_y):
+        
+        i = np.argmin(np.abs(X_data - x))
+        dx = X_data[i] - x
+        dy = Y_data[i] - y
+
+        err += dx**2 + dy**2
+
+    return err / len(points_x)
+
 
 
 # Генерация случайных коэффициентов для y
@@ -112,7 +133,7 @@ def mutant(params : tuple, mutation_range : tuple) -> tuple:
 
 # Генетический метод
 def evolution(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
-    global x_start, y_start, a1, a2, b1, b2, c_range, d_range, e_range, fractal_depth_evolution, function
+    global x_start, y_start, a1, a2, b1, b2, c_range, d_range, e_range, fractal_depth_evolution, function, X_data, Y_data
 
     best_params = 0
     best_error = float("inf")
@@ -128,7 +149,8 @@ def evolution(population_size : int, generations : int, survived_population : in
                                         x_start,
                                         y_start,
                                         fractal_depth_evolution)
-            e = error(px, py, function)
+            # e = error(px, py, function)
+            e = error_for_data(px, py, X_data, Y_data)
             scores.append((e, params))
 
         scores.sort()
@@ -196,7 +218,7 @@ mutation_range = (
 )
 
 # Результат интерполяции (коэффициенты)
-best_params = evolution(population_size, generations, survived_population, mutation_range)
+best_params = (0.5, 0.0, 0.42693793237700967, 0.08987851368160676, 0.03635309280920177, 0.5, 0.5, -0.45572009683533815, 0.06069548502594522, 0.45825248071831315)
 print(best_params)
 
 # Результат интерполяции (ошибка)
@@ -205,16 +227,17 @@ points_x, points_y = generate_fractal_IFS(best_params[:len(best_params) // 2],
                                         x_start,
                                         y_start,
                                         fractal_depth_graph)
-print(error(points_x, points_y, function))
+print(error_for_data(points_x, points_y, X_data, Y_data))
 
 # Графическое отображение фрактала
 plt.figure(figsize=(6,6))
 plt.scatter(points_x, points_y, s=1, linewidths=0.1, c="red")
 
 # Графическое отображение исходной функции
-x = np.linspace(0, 1, 500)
-y = function(x)
-plt.plot(x, y, c="blue")
+# x = np.linspace(0, 1, 500)
+# y = function(x)
+# plt.plot(x, y, c="blue")
+plt.plot(X_data, Y_data, c="blue")
 
 plt.gca().set_aspect('equal')
 plt.show()
