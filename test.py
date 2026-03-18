@@ -16,8 +16,7 @@ def affine_transformation(x: float, y: float, a: float, b: float, c: float, d: f
     return x_new, y_new
 
 # IFS фрактал
-def generate_fractal_IFS(params1 : tuple,
-                    params2 : tuple,
+def generate_fractal_IFS(IFS : tuple,
                     x_start : float,
                     y_start : float,
                     iterations : int) -> tuple[float, float]:
@@ -26,12 +25,36 @@ def generate_fractal_IFS(params1 : tuple,
     points_x=[]
     points_y=[]
 
+    interval_lengths = [IFS[i][0] for i in range(len(IFS))]
+    total_length = sum(interval_lengths)
+    probabilities = [length / total_length for length in interval_lengths]
+    
     for _ in range(iterations):
+        idx = np.random.choice(len(IFS), p=probabilities)
+        x, y = affine_transformation(x, y, *IFS[idx])
 
-        if rnd.random() < 0.5:
-            x,y = affine_transformation(x,y,*params1)
-        else:
-            x,y = affine_transformation(x,y,*params2)
+        points_x.append(x)
+        points_y.append(y)
+
+    return points_x, points_y
+
+def collage_theorem(IFS : tuple,
+                    X_data : tuple,
+                    Y_data : tuple):
+    points_x=[]
+    points_y=[]
+
+    interval_lengths = [IFS[i][0] for i in range(len(IFS))]
+    total_length = sum(interval_lengths)
+    probabilities = [length / total_length for length in interval_lengths]
+    
+    for i in range(len(X_data)):
+        j = 0
+
+        if i > 0:
+            j = i - 1
+
+        x, y = affine_transformation(X_data[i], Y_data[i], *IFS[j])
 
         points_x.append(x)
         points_y.append(y)
@@ -41,10 +64,9 @@ def generate_fractal_IFS(params1 : tuple,
 # Интерполируемая функция
 def function(x: float) -> float:
     return 0.5 * (1 - 2*abs(x-0.5))
-    # return np.sin(2 * np.pi * x)
 
 # Интерполируемое множество точек
-X_data = np.sort(np.random.rand(50))
+X_data = np.sort(np.concatenate(([0.0], np.random.rand(2), [1.0])))
 Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
 
 # Среднеквадратическое отклонение
@@ -63,73 +85,96 @@ def error_for_data(points_x : tuple,
         X_data : tuple,
         Y_data : tuple) -> float:
     err = 0
-
-    for x,y in zip(points_x,points_y):
+    count = 0
+    
+    for x, y in zip(points_x, points_y):
+        if x < 0 or x > 1:
+            err += 100.0
+            continue
+            
+        # Линейная интерполяция между ближайшими точками
+        i = np.searchsorted(X_data, x) - 1
+        if i < 0: i = 0
+        if i >= len(X_data)-1: i = len(X_data)-2
+            
+        x1, y1 = X_data[i], Y_data[i]
+        x2, y2 = X_data[i+1], Y_data[i+1]
         
-        i = np.argmin(np.abs(X_data - x))
-        dx = X_data[i] - x
-        dy = Y_data[i] - y
+        # Линейная интерполяция
+        t = (x - x1) / (x2 - x1)
+        y_interp = y1 + t * (y2 - y1)
+        
+        err += (y - y_interp)**2
+        count += 1
+    
+    return err / max(count, 1)
 
-        err += dx**2 + dy**2
-
-    return err / len(points_x)
-
+def error_collage(points_x : tuple,
+        points_y : tuple, 
+        X_data : tuple,
+        Y_data : tuple) -> float:
+    err = 0
+    count = 0
+    
+    for i in range(len(Y_data)):
+        err += (Y_data[i] - points_y[i])**2
+        count += 1
+    
+    return err / max(count, 1)
 
 
 # Генерация случайных коэффициентов для y
-def random_params(a1 : float,
-                a2 : float,
-                b1: float,
-                b2 : float,
+def random_params(x_i : float,
+                x_i1 : float,
                 c_range : tuple[float, float],
                 d_range : tuple[float, float],
                 e_range : tuple[float, float]) -> tuple:
+    a = x_i1 - x_i
 
-    c1 = rnd.uniform(*c_range)
-    c2 = rnd.uniform(*c_range)
+    b = x_i
 
-    d1 = rnd.uniform(*d_range)
-    d2 = rnd.uniform(*d_range)
+    c = rnd.uniform(*c_range)
 
-    e1 = rnd.uniform(*e_range)
-    e2 = rnd.uniform(*e_range)
+    d = rnd.uniform(*d_range)
 
+    e = rnd.uniform(*e_range)
     # Условие сжимаемости
-    if ((np.fabs(a1 * d1) >= 1) or (np.fabs(a2 * d2) >= 1)):
-        return random_params()    
+    if ((np.fabs(a * d) >= 1)):
+        return random_params(x_i, x_i1, c_range, d_range, e_range)    
 
     return (
-        a1, 
-        b1,
-        c1,
-        d1,
-        e1,
-
-        a2, 
-        b2,
-        c2,
-        d2,
-        e2,
+        a, b, c, d, e
     )
+
+def random_IFS(X_data : tuple,
+                c_range : tuple[float, float],
+                d_range : tuple[float, float],
+                e_range : tuple[float, float]) -> tuple:
+    
+    return tuple(random_params(X_data[i], X_data[i + 1], c_range, d_range, e_range) for i in range(len(X_data)- 1))
 
 # Генерация случайно популяции
 def random_population(size : int, 
-                    a1 : float,
-                    a2 : float,
-                    b1: float,
-                    b2 : float,
+                    X_data : tuple,
                     c_range : tuple[float, float],
                     d_range : tuple[float, float],
                     e_range : tuple[float, float]) -> tuple:
-    return tuple(random_params(a1, a2, b1, b2, c_range, d_range, e_range) for _ in range(size))
+    return tuple(random_IFS(X_data, c_range, d_range, e_range) for _ in range(size))
 
 # Перемешивание
-def cross_over(params1 : tuple, params2 : tuple) -> tuple:
-    return tuple(x[rnd.randint(0, 1)] for x in (zip(params1, params2)))
+def cross_over(IFS1 : tuple, IFS2 : tuple) -> tuple:
+    return tuple(x[rnd.randint(0, 1)] for x in (zip(IFS1, IFS2)))
 
 # Мутации
-def mutant(params : tuple, mutation_range : tuple) -> tuple:
-    return tuple(params[i] + rnd.uniform(*mutation_range[i]) for i in range(len(params)))
+def mutant(IFS : tuple, mutation_range : tuple) -> tuple:
+    mutated = []
+    for params in IFS:
+        new_params = tuple(
+            params[i] + rnd.uniform(*mutation_range[i]) 
+            for i in range(len(params))
+        )
+        mutated.append(new_params)
+    return tuple(mutated)
 
 # Генетический метод
 def evolution(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
@@ -138,20 +183,23 @@ def evolution(population_size : int, generations : int, survived_population : in
     best_params = 0
     best_error = float("inf")
 
-    population = random_population(population_size, a1, a2, b1, b2, c_range, d_range, e_range)
+    population = random_population(population_size, X_data, c_range, d_range, e_range)
 
     for _ in range(generations):
         scores = []
 
-        for params in population:
-            px, py = generate_fractal_IFS(params[:len(params) // 2], 
-                                        params[len(params) // 2:], 
-                                        x_start,
-                                        y_start,
-                                        fractal_depth_evolution)
+        for IFS in population:
+            # px, py = generate_fractal_IFS(IFS, 
+            #                             x_start,
+            #                             y_start,
+            #                             fractal_depth_evolution)
+
+            px, py = collage_theorem(IFS, X_data, Y_data)
+
             # e = error(px, py, function)
-            e = error_for_data(px, py, X_data, Y_data)
-            scores.append((e, params))
+            # e = error_for_data(px, py, X_data, Y_data)
+            e = error_collage(px, py, X_data, Y_data)
+            scores.append((e, IFS))
 
         scores.sort()
 
@@ -191,39 +239,31 @@ b2 = 0.5
 
 # Границы для генерации коэффициентов
 c_range = (-2, 2)
-d_range = (-0.5, 0.5)
+d_range = (-0.15, 0.15)
 e_range = (-1, 1)
 
 
 # Глубина фрактала
-fractal_depth_evolution = 5000
-fractal_depth_graph = 10000
+fractal_depth_evolution = 15000  # больше точек для оценки
+fractal_depth_graph = 15000      # для красивого графика
 
 # Параметры генетического метода
-population_size = 100
-generations = 100
-survived_population = 20
+population_size = 1500
+generations = 10000
+survived_population = 100
 mutation_range = (
-    (-0,0),
-    (-0,0),
-    (-0.05, 0.05),
-    (-0.05, 0.05),
-    (-0.05, 0.05),
-
-    (-0,0),
-    (-0,0),
-    (-0.05, 0.05),
-    (-0.05, 0.05),
-    (-0.05, 0.05),
+    (0,0),      
+    (0,0),      
+    (-0.1, 0.1), 
+    (-0.01, 0.01), 
+    (-0.05, 0.05), 
 )
-
 # Результат интерполяции (коэффициенты)
-best_params = (0.5, 0.0, 0.42693793237700967, 0.08987851368160676, 0.03635309280920177, 0.5, 0.5, -0.45572009683533815, 0.06069548502594522, 0.45825248071831315)
-print(best_params)
+best_IFS = evolution(population_size, generations, survived_population, mutation_range)
+print(best_IFS)
 
 # Результат интерполяции (ошибка)
-points_x, points_y = generate_fractal_IFS(best_params[:len(best_params) // 2], 
-                                        best_params[len(best_params) // 2:],
+points_x, points_y = generate_fractal_IFS(best_IFS,
                                         x_start,
                                         y_start,
                                         fractal_depth_graph)
