@@ -31,9 +31,12 @@ def generate_fractal_IFS(IFS : tuple,
     total_length = sum(interval_lengths)
     probabilities = [length / total_length for length in interval_lengths]
     
-    for _ in range(iterations):
+    for _ in range(iterations + 200):
         idx = np.random.choice(len(IFS), p=probabilities)
         x, y = affine_transformation(x, y, *IFS[idx])
+
+        if (iterations < 200):
+            continue
 
         points_x.append(x)
         points_y.append(y)
@@ -177,7 +180,9 @@ def mutant(IFS : tuple, mutation_range : tuple) -> tuple:
     return tuple(mutated)
 
 def evaluate_ifs(args):
-    IFS, x_start, y_start, fractal_depth_evolution, X_data, Y_data = args
+    global X_data, Y_data
+
+    IFS, x_start, y_start, fractal_depth_evolution= args
     
     px, py = generate_fractal_IFS(
         IFS,
@@ -203,7 +208,7 @@ def evolution(population_size : int, generations : int, survived_population : in
         scores = []
 
         args_list = [
-            (IFS, x_start, y_start, fractal_depth_evolution, X_data, Y_data)
+            (IFS, x_start, y_start, fractal_depth_evolution)
             for IFS in population
         ]
 
@@ -299,7 +304,7 @@ b2 = 0.5
 
 # Границы для генерации коэффициентов
 c_range = (0.3, 0.7)
-d_range = (0.15, 0.15)
+d_range = (0.1, 0.1)
 e_range = (-0.5, 0.5)
 
 
