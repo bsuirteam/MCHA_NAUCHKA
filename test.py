@@ -43,46 +43,13 @@ def generate_fractal_IFS(IFS : tuple,
 
     return points_x, points_y
 
-def collage_theorem(IFS : tuple,
-                    X_data : tuple,
-                    Y_data : tuple):
-    points_x=[]
-    points_y=[]
-    
-    for i in range(len(X_data)):
-        j = 0
-
-        if i == 0:
-            j = i
-        else:
-            j = i - 1
-
-        x, y = affine_transformation(X_data[i], Y_data[i], *IFS[j])
-
-        points_x.append(x)
-        points_y.append(y)
-
-    return points_x, points_y
-
-# Интерполируемая функция
-def function(x: float) -> float:
-    return 0.5 * (1 - 2*abs(x-0.5))
 
 # Интерполируемое множество точек
 X_data = np.sort(np.concatenate(([0.0], np.random.rand(10), [1.0])))
-Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
+# Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.05, len(X_data))
+Y_data = np.sin(2 * np.pi * X_data) + np.random.normal(0, 0.05, len(X_data))
 
 # Среднеквадратическое отклонение
-def error(points_x : tuple,
-        points_y : tuple, 
-        f) -> float:
-    err = 0
-
-    for x,y in zip(points_x,points_y):
-        err += (y - f(x))**2
-
-    return err / len(points_x)
-
 def error_for_data(points_x : tuple,
         points_y : tuple, 
         X_data : tuple,
@@ -112,25 +79,12 @@ def error_for_data(points_x : tuple,
     
     return err / max(count, 1)
 
-def error_collage(points_x : tuple,
-        points_y : tuple, 
-        X_data : tuple,
-        Y_data : tuple) -> float:
-    err = 0
-    count = 0
-    
-    for i in range(len(Y_data)):
-        err += (Y_data[i] - points_y[i])**2
-        count += 1
-    
-    return err / max(count, 1)
-
 
 # Генерация случайных коэффициентов для y
 def random_params(x_i : float,
                 x_i1 : float,
                 c_range : tuple[float, float],
-                d_range : tuple[float, float],
+                d : float,
                 e_range : tuple[float, float]) -> tuple:
     a = x_i1 - x_i
 
@@ -138,12 +92,11 @@ def random_params(x_i : float,
 
     c = rnd.uniform(*c_range)
 
-    d = rnd.uniform(*d_range)
-
     e = rnd.uniform(*e_range)
+
     # Условие сжимаемости
     if ((np.fabs(a * d) >= 1)):
-        return random_params(x_i, x_i1, c_range, d_range, e_range)    
+        return random_params(x_i, x_i1, c_range, d, e_range)    
 
     return (
         a, b, c, d, e
@@ -151,18 +104,18 @@ def random_params(x_i : float,
 
 def random_IFS(X_data : tuple,
                 c_range : tuple[float, float],
-                d_range : tuple[float, float],
+                d : float,
                 e_range : tuple[float, float]) -> tuple:
     
-    return tuple(random_params(X_data[i], X_data[i + 1], c_range, d_range, e_range) for i in range(len(X_data)- 1))
+    return tuple(random_params(X_data[i], X_data[i + 1], c_range, d, e_range) for i in range(len(X_data)- 1))
 
 # Генерация случайно популяции
 def random_population(size : int, 
                     X_data : tuple,
                     c_range : tuple[float, float],
-                    d_range : tuple[float, float],
+                    d : float,
                     e_range : tuple[float, float]) -> tuple:
-    return tuple(random_IFS(X_data, c_range, d_range, e_range) for _ in range(size))
+    return tuple(random_IFS(X_data, c_range, d, e_range) for _ in range(size))
 
 # Перемешивание
 def cross_over(IFS1 : tuple, IFS2 : tuple) -> tuple:
@@ -178,6 +131,13 @@ def mutant(IFS : tuple, mutation_range : tuple) -> tuple:
         )
         mutated.append(new_params)
     return tuple(mutated)
+
+
+def tournament_select(scored_population: list, k: int = 3) -> tuple:
+    """Турнирная селекция: выбирает лучшего из k случайных."""
+    contestants = rnd.sample(scored_population, k)
+    return min(contestants, key=lambda x: x[0])[1]
+
 
 def evaluate_ifs(args):
     global X_data, Y_data
@@ -197,12 +157,14 @@ def evaluate_ifs(args):
 
 # Генетический метод
 def evolution(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
-    global x_start, y_start, a1, a2, b1, b2, c_range, d_range, e_range, fractal_depth_evolution, function, X_data, Y_data
+    global x_start, y_start, a1, a2, b1, b2, c_range, d, e_range, fractal_depth_evolution, function, X_data, Y_data, waiting_for_mutation
 
     best_params = 0
     best_error = float("inf")
+    current_waiting = 0
+    saved_mut = mutation_range
 
-    population = random_population(population_size, X_data, c_range, d_range, e_range)
+    population = random_population(population_size, X_data, c_range, d, e_range)
 
     for _ in range(generations):
         scores = []
@@ -220,6 +182,17 @@ def evolution(population_size : int, generations : int, survived_population : in
         if (scores[0][0] < best_error):
             best_params = scores[0][1]
             best_error = scores[0][0]
+            mutation_range = saved_mut
+
+        elif (scores[0][0] > best_error):
+            current_waiting+=1
+            if (current_waiting == waiting_for_mutation):
+                mutation_range *= 5
+                current_waiting = 0
+                print("Mutated")
+            
+
+        
 
         best = [p for _,p in scores[:survived_population]]
 
@@ -227,57 +200,9 @@ def evolution(population_size : int, generations : int, survived_population : in
 
         while len(new_population) < population_size:
 
-            p1,p2 = rnd.sample(best,2)
+            p1 = tournament_select(scores)
 
-            child = cross_over(p1,p2)
-
-            child = mutant(child, mutation_range)
-
-            new_population.append(child)
-
-        population = new_population
-
-        print(best_error)
-
-    return best_params
-
-def evolution_collage(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
-    global x_start, y_start, a1, a2, b1, b2, c_range, d_range, e_range, fractal_depth_evolution, function, X_data, Y_data
-
-    best_params = 0
-    best_error = float("inf")
-
-    population = random_population(population_size, X_data, c_range, d_range, e_range)
-
-    for _ in range(generations):
-        scores = []
-
-        for IFS in population:
-            # px, py = generate_fractal_IFS(IFS, 
-            #                             x_start,
-            #                             y_start,
-            #                             fractal_depth_evolution)
-
-            px, py = collage_theorem(IFS, X_data, Y_data)
-
-            # e = error(px, py, function)
-            # e = error_for_data(px, py, X_data, Y_data)
-            e = error_collage(px, py, X_data, Y_data)
-            scores.append((e, IFS))
-
-        scores.sort()
-
-        if (scores[0][0] < best_error):
-            best_params = scores[0][1]
-            best_error = scores[0][0]
-
-        best = [p for _,p in scores[:survived_population]]
-
-        new_population = best.copy()
-
-        while len(new_population) < population_size:
-
-            p1,p2 = rnd.sample(best,2)
+            p2 = tournament_select(scores)
 
             child = cross_over(p1,p2)
 
@@ -296,26 +221,20 @@ def evolution_collage(population_size : int, generations : int, survived_populat
 x_start = 0.5
 y_start = 0.3
 
-# Постоянные коэффициенты
-a1 = 0.5
-a2 = 0.5
-b1 = 0
-b2 = 0.5
-
 # Границы для генерации коэффициентов
 c_range = (0.3, 0.7)
-d_range = (0.1, 0.1)
+d = 0.1
 e_range = (-0.5, 0.5)
 
 
 # Глубина фрактала
-fractal_depth_evolution = 2000  # больше точек для оценки
-fractal_depth_graph = 15000      # для красивого графика
+fractal_depth_evolution = 3000
+fractal_depth_graph = 15000   
 
 # Параметры генетического метода
 population_size = 100
-generations = 150            # ДЛЯ КОЛЛАЖА МОЖЕШЬ СМЕЛО БРАТЬ 5000 И БОЛЬШЕ А БЕЗ ОКОЛО 50   
-survived_population = 20
+generations = 150 
+survived_population = 5
 mutation_range = (
     (0,0),      
     (0,0),      
@@ -323,6 +242,7 @@ mutation_range = (
     (0, 0), 
     (-0.05, 0.05), 
 )
+waiting_for_mutation = 3
 
 if __name__ == "__main__":
     # Результат интерполяции (коэффициенты)
