@@ -4,6 +4,7 @@ import random as rnd
 from multiprocessing import Pool, cpu_count
 from numba import njit
 import pandas as pd
+from io import StringIO
 
 
 # a - Сжатие по x
@@ -11,7 +12,6 @@ import pandas as pd
 # c - Наклон (поворот)
 # d - Сжатие по y + степень фрактальности
 # e - Смещение по y
-#@njit
 def affine_transformation(x: float, y: float, a: float, b: float, c: float, d: float, e: float) -> tuple[float, float]:
     
     x_new = a * x + b
@@ -19,7 +19,6 @@ def affine_transformation(x: float, y: float, a: float, b: float, c: float, d: f
 
     return x_new, y_new
 
-#@njit
 def generate_fractal_IFS_fast(ifs_array,x_start, y_start, iterations, probs):
     
     res = np.empty((iterations, 2), dtype=np.float64)
@@ -85,12 +84,31 @@ def generate_fractal_IFS(IFS : tuple,
 
 
 # Интерполируемое множество точек
-# X_data = np.sort(np.concatenate(([0.0], np.random.rand(10), [1.0])))
-# Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.05, len(X_data))
+X_data = np.sort(np.concatenate(([0.0], np.random.rand(10), [1.0])))
+Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.05, len(X_data))
 # Y_data = np.sin(2 * np.pi * X_data) + np.random.normal(-0.1, 0.1, len(X_data))
 
-X_data = np.sort(np.concatenate(([0.0], np.random.uniform(0, 1, 4), [1.0])))
-Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
+# X_data = np.sort(np.concatenate(([0.0], np.random.uniform(0, 3, 4), [3.0])))
+# Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
+
+# data = """Date,Adj Close
+# 5/15/1997,1.958333
+# 5/16/1997,1.729167
+# 5/19/1997,1.708333
+# 5/20/1997,1.635417
+# 5/21/1997,1.427083
+# 5/22/1997,1.395833
+# 5/23/1997,1.5
+# 5/27/1997,1.583333
+# 5/28/1997,1.53125"""
+
+# amzn_DF = pd.read_csv(StringIO(data))
+# amzn_DF['index'] = range(len(amzn_DF)) 
+# X_data = amzn_DF["index"].values
+# Y_data = amzn_DF["Adj Close"].values
+
+X_data_min = X_data[0]
+X_data_max = X_data[-1]
 
 Errors_data = []
 
@@ -129,10 +147,10 @@ def error_for_data_fast(points_x, points_y, X_data, Y_data):
     px = np.asarray(points_x)
     py = np.asarray(points_y)
     # Фильтруем точки вне [0, 1]
-    mask = (px >= 0) & (px <= 1)
-    if mask.sum() == 0:
-        return 500.0
-    px, py = px[mask], py[mask]
+    # # mask = (px >= 0) & (px <= 1)
+    # # if mask.sum() == 0:
+    # #     return 500.0
+    # px, py = px[mask], py[mask]
     
     # Векторный searchsorted вместо цикла
     i = np.searchsorted(X_data, px) - 1
@@ -154,7 +172,7 @@ def random_params(x_i : float,
                 c_range : tuple[float, float],
                 d : float,
                 e_range : tuple[float, float]) -> tuple:
-    a = x_i1 - x_i
+    a = (x_i1 - x_i) / (X_data_max - X_data_min)
 
     b = x_i
 
@@ -319,12 +337,12 @@ d = 0.15
 e_range = (-0.5, 0.5)
 
 # Глубина фрактала
-fractal_depth_evolution = 1000
-fractal_depth_graph = 1000
+fractal_depth_evolution = 5000
+fractal_depth_graph = 5000
 
 # Параметры генетического метода
 population_size = 100
-generations = 50   
+generations = 100  
 survived_population = 3
 mutation_range = (
     (0,0),      
