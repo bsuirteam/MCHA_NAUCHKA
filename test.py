@@ -11,7 +11,7 @@ import pandas as pd
 # c - Наклон (поворот)
 # d - Сжатие по y + степень фрактальности
 # e - Смещение по y
-@njit
+#@njit
 def affine_transformation(x: float, y: float, a: float, b: float, c: float, d: float, e: float) -> tuple[float, float]:
     
     x_new = a * x + b
@@ -19,8 +19,8 @@ def affine_transformation(x: float, y: float, a: float, b: float, c: float, d: f
 
     return x_new, y_new
 
-@njit
-def generate_fractal_IFS_fast(ifs_array,x_start, y_start, iterations, probs ):
+#@njit
+def generate_fractal_IFS_fast(ifs_array,x_start, y_start, iterations, probs):
     
     res = np.empty((iterations, 2), dtype=np.float64)
 
@@ -74,12 +74,9 @@ def generate_fractal_IFS(IFS : tuple,
     total_length = sum(interval_lengths)
     probabilities = [length / total_length for length in interval_lengths]
     
-    for _ in range(iterations + 200):
+    for _ in range(iterations):
         idx = np.random.choice(len(IFS), p=probabilities)
         x, y = affine_transformation(x, y, *IFS[idx])
-
-        if (iterations < 200):
-            continue
 
         points_x.append(x)
         points_y.append(y)
@@ -88,9 +85,13 @@ def generate_fractal_IFS(IFS : tuple,
 
 
 # Интерполируемое множество точек
-X_data = np.sort(np.concatenate(([0.0], np.random.rand(20), [1.0])))
+# X_data = np.sort(np.concatenate(([0.0], np.random.rand(10), [1.0])))
 # Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.05, len(X_data))
-Y_data = np.sin(2 * np.pi * X_data) + np.random.normal(-0.3, 0.3, len(X_data))
+# Y_data = np.sin(2 * np.pi * X_data) + np.random.normal(-0.1, 0.1, len(X_data))
+
+X_data = np.sort(np.concatenate(([0.0], np.random.uniform(0, 1, 4), [1.0])))
+Y_data = 0.5 * (1 - 2*abs( X_data - 0.5)) + np.random.normal(0, 0.1, len(X_data))
+
 Errors_data = []
 
 # Среднеквадратическое отклонение
@@ -102,6 +103,9 @@ def error_for_data(points_x : tuple,
     count = 0
     
     for x, y in zip(points_x, points_y):
+        # if x < 0 or x > 1:
+        #     err += 100.0
+        #     continue
             
         # Линейная интерполяция между ближайшими точками
         i = np.searchsorted(X_data, x) - 1
@@ -119,6 +123,29 @@ def error_for_data(points_x : tuple,
         count += 1
     
     return err / max(count, 1)
+
+
+def error_for_data_fast(points_x, points_y, X_data, Y_data):
+    px = np.asarray(points_x)
+    py = np.asarray(points_y)
+    # Фильтруем точки вне [0, 1]
+    mask = (px >= 0) & (px <= 1)
+    if mask.sum() == 0:
+        return 500.0
+    px, py = px[mask], py[mask]
+    
+    # Векторный searchsorted вместо цикла
+    i = np.searchsorted(X_data, px) - 1
+    i = np.clip(i, 0, len(X_data) - 2)
+    
+    x1, y1 = X_data[i], Y_data[i]
+    x2, y2 = X_data[i+1], Y_data[i+1]
+    
+    t = (px - x1) / (x2 - x1)
+    y_interp = y1 + t * (y2 - y1)
+    
+    return float(np.mean((py - y_interp) ** 2))
+
 
 
 # Генерация случайных коэффициентов для y
@@ -202,16 +229,12 @@ def evaluate_ifs(args):
     IFS, x_start, y_start, fractal_depth_evolution = args
     
 
-
     ifs_data = np.ascontiguousarray(np.array(IFS))
 
         # Считаем веса (можно по твоей логике или по определителю)
     # Обычно вероятность пропорциональна площади: abs(a*d - b*c)
     weights = ifs_data[:, 0] # Твоя логика: первый коэффициент
     probs = weights / np.sum(weights)
-
-
-
 
     px, py = generate_fractal_IFS_fast(
         ifs_data,
@@ -224,28 +247,6 @@ def evaluate_ifs(args):
     e = error_for_data_fast(px, py, X_data, Y_data)
     
     return (e, IFS)
-
-def error_for_data_fast(points_x, points_y, X_data, Y_data):
-    px = np.asarray(points_x)
-    py = np.asarray(points_y)
-    # Фильтруем точки вне [0, 1]
-    mask = (px >= 0) & (px <= 1)
-    if mask.sum() == 0:
-        return 100.0
-    px, py = px[mask], py[mask]
-    
-    # Векторный searchsorted вместо цикла
-    i = np.searchsorted(X_data, px) - 1
-    i = np.clip(i, 0, len(X_data) - 2)
-    
-    x1, y1 = X_data[i], Y_data[i]
-    x2, y2 = X_data[i+1], Y_data[i+1]
-    
-    t = (px - x1) / (x2 - x1)
-    y_interp = y1 + t * (y2 - y1)
-    
-    return float(np.mean((py - y_interp) ** 2))
-
 
 # Генетический метод
 def evolution(population_size : int, generations : int, survived_population : int, mutation_range : tuple) -> tuple:
@@ -267,7 +268,7 @@ def evolution(population_size : int, generations : int, survived_population : in
         ]
 
         with Pool(cpu_count()) as pool:
-            scores = pool.map(evaluate_ifs, args_list)
+            scores = pool.map(evaluate_ifs, args_list, chunksize=1000)
 
         scores.sort()
 
@@ -314,18 +315,17 @@ y_start = 0.3
 
 # Границы для генерации коэффициентов
 c_range = (0.3, 0.7)
-d = 0.1
+d = 0.15
 e_range = (-0.5, 0.5)
 
-
 # Глубина фрактала
-fractal_depth_evolution = 50000
-fractal_depth_graph = 1000000   
+fractal_depth_evolution = 1000
+fractal_depth_graph = 1000
 
 # Параметры генетического метода
-population_size = 300
-generations = 200
-survived_population = 5
+population_size = 100
+generations = 50   
+survived_population = 3
 mutation_range = (
     (0,0),      
     (0,0),      
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     print(best_IFS)
 
     ifs_data = np.ascontiguousarray(np.array(best_IFS))
-    weights = ifs_data[:, 0] # Твоя логика: первый коэффициент
+    weights = ifs_data[:, 0]
     probs = weights / np.sum(weights)
 
     # Результат интерполяции (ошибка)
